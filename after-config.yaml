@@ -1,0 +1,46 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  # 1. Memory Limiter (Prevents OOM crashes)
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+
+  # 2. Transform (Removes sensitive/unnecessary resource attributes)
+  transform:
+    error_mode: ignore
+    trace_statements:
+      - context: resource
+        statements:
+          - delete_key(attributes, "env")
+
+  # 3. Batch (Groups spans to reduce CPU & network I/O)
+  batch:
+    send_batch_size: 8192
+    timeout: 200ms
+
+  # 4. Tail Sampling (Filters routine noise, keeps errors/sampled subsets)
+  tail_sampling:
+    decision_wait: 2s
+    num_traces: 5000
+    expected_new_traces_per_sec: 1000
+    policies:
+      - name: drop_success
+        type: probabilistic
+        probabilistic: {"sampling_percentage": 10.0}
+
+exporters:
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, transform, batch, tail_sampling]
+      exporters: [debug]
