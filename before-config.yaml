@@ -3,17 +3,26 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
 
 processors:
-  # No batching, memory limits, or sampling configured
+  resourcedetection:
+    detectors: [env, system]
 
 exporters:
-  debug:
-    verbosity: basic
+  otlp:
+    endpoint: "otel-backend:4317"
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: true
+      batch:
+        enabled: false 
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: []
-      exporters: [debug]
+      processors: [resourcedetection]
+      exporters: [otlp]
