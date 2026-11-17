@@ -7,14 +7,12 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  # 1. Always first: protects Collector stability under memory pressure
   memory_limiter:
     check_interval: 1s
     limit_mib: 350
     spike_limit_mib: 70
 
-  # 2. Trim unnecessary high-detail host attributes
-  resourcedetection:
+  resource_detection:
     detectors: [env, system]
     system:
       resource_attributes:
@@ -29,14 +27,12 @@ processors:
         host.cpu.cache.l2.size:
           enabled: false
 
-  # 3. Scrub static/unneeded attributes
   transform/sanitize_spans:
     trace_statements:
       - context: span
         statements:
           - delete_key(attributes, "http.request.header.authorization")
 
-  # 4. Tail-based sampling (retains 100% of errors + 5% probabilistic sample)
   tail_sampling:
     decision_wait: 10s
     policies:
@@ -48,7 +44,7 @@ processors:
         probabilistic: { sampling_percentage: 5 }
 
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: "otel-backend:4317"
     tls:
       insecure: true
@@ -65,5 +61,5 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, transform/sanitize_spans, tail_sampling]
-      exporters: [otlp]
+      processors: [memory_limiter, resource_detection, transform/sanitize_spans, tail_sampling]
+      exporters: [otlp_grpc]
