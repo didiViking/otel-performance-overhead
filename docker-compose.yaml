@@ -4,9 +4,22 @@ services:
     container_name: otel-collector
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
-      - ./before-config.yaml:/etc/otelcol-contrib/config.yaml
+      - ./before-config.yaml:/etc/otelcol-contrib/config.yaml 
     ports:
-      - "4317:4317" # OTLP gRPC receiver
-      - "8888:8888" # Internal Prometheus metrics
+      - "4317:4317" 
+      - "4318:4318" 
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     environment:
       - GOMEMLIMIT=400MiB
+    depends_on:
+      - otel-backend
+
+  otel-backend:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-backend
+    command:
+      - "--config=yaml:receivers::otlp::protocols::grpc::endpoint: 0.0.0.0:4317\nexporters::debug::verbosity: basic\nservice::pipelines::traces::receivers: [otlp]\nservice::pipelines::traces::exporters: [debug]"
+
