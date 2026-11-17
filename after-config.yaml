@@ -31,7 +31,7 @@ processors:
     trace_statements:
       - context: span
         statements:
-          - delete_key(attributes, "http.request.header.authorization")
+          - delete_key(span.attributes, "http.request.header.authorization")
 
   tail_sampling:
     decision_wait: 10s
