@@ -3,44 +3,67 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
 
 processors:
-  # 1. Memory Limiter (Prevents OOM crashes)
+  # 1. Always first: protects Collector stability under memory pressure
   memory_limiter:
     check_interval: 1s
-    limit_percentage: 80
-    spike_limit_percentage: 20
+    limit_mib: 350
+    spike_limit_mib: 70
 
-  # 2. Transform (Removes sensitive/unnecessary resource attributes)
-  transform:
-    error_mode: ignore
+  # 2. Trim unnecessary high-detail host attributes
+  resourcedetection:
+    detectors: [env, system]
+    system:
+      resource_attributes:
+        host.name:
+          enabled: true
+        os.type:
+          enabled: true
+        host.arch:
+          enabled: false
+        host.cpu.model.name:
+          enabled: false
+        host.cpu.cache.l2.size:
+          enabled: false
+
+  # 3. Scrub static/unneeded attributes
+  transform/sanitize_spans:
     trace_statements:
-      - context: resource
+      - context: span
         statements:
-          - delete_key(attributes, "env")
+          - delete_key(attributes, "http.request.header.authorization")
 
-  # 3. Batch (Groups spans to reduce CPU & network I/O)
-  batch:
-    send_batch_size: 8192
-    timeout: 200ms
-
-  # 4. Tail Sampling (Filters routine noise, keeps errors/sampled subsets)
+  # 4. Tail-based sampling (retains 100% of errors + 5% probabilistic sample)
   tail_sampling:
-    decision_wait: 2s
-    num_traces: 5000
-    expected_new_traces_per_sec: 1000
+    decision_wait: 10s
     policies:
-      - name: drop_success
+      - name: errors-policy
+        type: status_code
+        status_code: { status_codes: [ERROR] }
+      - name: probabilistic-policy
         type: probabilistic
-        probabilistic: {"sampling_percentage": 10.0}
+        probabilistic: { sampling_percentage: 5 }
 
 exporters:
-  debug:
-    verbosity: basic
+  otlp:
+    endpoint: "otel-backend:4317"
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: true
+      sizer: items
+      queue_size: 100000
+      batch:
+        enabled: true
+        min_size: 8192
+        flush_timeout: 200ms
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, transform, batch, tail_sampling]
-      exporters: [debug]
+      processors: [memory_limiter, resourcedetection, transform/sanitize_spans, tail_sampling]
+      exporters: [otlp]
